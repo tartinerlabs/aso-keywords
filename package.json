@@ -10,7 +10,12 @@
     "format": "biome format --write"
   },
   "dependencies": {
+    "@neon/config": "^1.9.3",
+    "@neon/env": "^1.6.4",
+    "@vercel/functions": "3.10.3",
+    "drizzle-orm": "1.0.0-rc.5",
     "next": "16.4.3",
+    "pg": "8.23.1",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
@@ -21,9 +26,11 @@
     "@commitlint/types": "^21.2.3",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
+    "@types/pg": "8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
+    "drizzle-kit": "1.0.0-rc.5",
     "tailwindcss": "^4",
     "typescript": "^5"
   },
