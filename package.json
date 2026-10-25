@@ -10,12 +10,14 @@
     "format": "biome format --write"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "2.4.0",
     "@neon/config": "1.9.3",
     "@neon/env": "1.6.4",
     "@vercel/functions": "3.10.3",
     "ai": "7.0.153",
     "drizzle-orm": "1.0.0-rc.5",
     "jose": "6.2.13",
+    "mcp-handler": "2.3.0",
     "next": "16.4.3",
     "pg": "8.23.1",
     "react": "19.3.0",

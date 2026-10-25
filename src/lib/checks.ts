@@ -171,3 +171,74 @@ export async function refreshTracked({
 
   return { due: due.length, checked, failed, throttled };
 }
+
+/** Checks of history kept per tracked keyword. */
+export const HISTORY = 30;
+
+export type Check = {
+  checkedAt: Date;
+  volume: number;
+  difficulty: number;
+  /** Result IDs in rank order */
+  results: { id: number }[];
+};
+
+export type Tracked = {
+  keywordId: number;
+  phrase: string;
+  country: string;
+  /** Newest first */
+  checks: Check[];
+};
+
+/** Tracked keywords of an app with their last checks, newest first. */
+export async function loadTracked(appId: number): Promise<Tracked[]> {
+  // Last 30 checks per tracked keyword; only result IDs, not the full lists
+  const { rows } = await db.execute<{
+    keyword_id: number;
+    phrase: string;
+    country: string;
+    // Raw timestamptz text from db.execute
+    checked_at: string | null;
+    volume: number | null;
+    difficulty: number | null;
+    ids: number[] | null;
+  }>(sql`
+    select k.id as keyword_id, k.phrase, k.country,
+      c.checked_at, c.volume, c.difficulty, c.ids
+    from app_keywords ak
+    join keywords k on k.id = ak.keyword_id
+    left join lateral (
+      select checked_at, volume, difficulty,
+        jsonb_path_query_array(top_apps, '$[*].id') as ids
+      from keyword_checks
+      where keyword_id = k.id
+      order by checked_at desc
+      limit ${HISTORY}
+    ) c on true
+    where ak.app_id = ${appId}
+    order by k.phrase, k.country, c.checked_at desc`);
+
+  const byKeyword = new Map<number, Tracked>();
+  for (const r of rows) {
+    let t = byKeyword.get(r.keyword_id);
+    if (!t) {
+      t = {
+        keywordId: r.keyword_id,
+        phrase: r.phrase,
+        country: r.country,
+        checks: [],
+      };
+      byKeyword.set(r.keyword_id, t);
+    }
+    if (r.checked_at && r.ids) {
+      t.checks.push({
+        checkedAt: new Date(r.checked_at),
+        volume: r.volume ?? 0,
+        difficulty: r.difficulty ?? 0,
+        results: r.ids.map((id) => ({ id })),
+      });
+    }
+  }
+  return [...byKeyword.values()];
+}

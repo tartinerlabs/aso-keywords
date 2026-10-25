@@ -1,9 +1,10 @@
-import { asc, eq, sql } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { db } from "@/db";
 import { appCompetitors, apps } from "@/db/schema";
+import { HISTORY, loadTracked } from "@/lib/checks";
 import { rankOf } from "@/lib/scoring";
 import { removeCompetitor, removeKeyword } from "./actions";
 import {
@@ -17,8 +18,6 @@ export const metadata: Metadata = { title: "Tracking" };
 
 // Manual refresh runs up to 15 Apple searches in sequence
 export const maxDuration = 120;
-
-const HISTORY = 30;
 
 const headClass =
   "px-2 py-1.5 text-left text-[11px] font-medium uppercase tracking-[0.04em] text-muted-foreground";
@@ -111,73 +110,6 @@ async function Tracking({
       )}
     </>
   );
-}
-
-type Check = {
-  checkedAt: Date;
-  volume: number;
-  difficulty: number;
-  /** Result IDs in rank order */
-  results: { id: number }[];
-};
-
-type Tracked = {
-  keywordId: number;
-  phrase: string;
-  country: string;
-  /** Newest first */
-  checks: Check[];
-};
-
-async function loadTracked(appId: number): Promise<Tracked[]> {
-  // Last 30 checks per tracked keyword; only result IDs, not the full lists
-  const { rows } = await db.execute<{
-    keyword_id: number;
-    phrase: string;
-    country: string;
-    // Raw timestamptz text from db.execute
-    checked_at: string | null;
-    volume: number | null;
-    difficulty: number | null;
-    ids: number[] | null;
-  }>(sql`
-    select k.id as keyword_id, k.phrase, k.country,
-      c.checked_at, c.volume, c.difficulty, c.ids
-    from app_keywords ak
-    join keywords k on k.id = ak.keyword_id
-    left join lateral (
-      select checked_at, volume, difficulty,
-        jsonb_path_query_array(top_apps, '$[*].id') as ids
-      from keyword_checks
-      where keyword_id = k.id
-      order by checked_at desc
-      limit ${HISTORY}
-    ) c on true
-    where ak.app_id = ${appId}
-    order by k.phrase, k.country, c.checked_at desc`);
-
-  const byKeyword = new Map<number, Tracked>();
-  for (const r of rows) {
-    let t = byKeyword.get(r.keyword_id);
-    if (!t) {
-      t = {
-        keywordId: r.keyword_id,
-        phrase: r.phrase,
-        country: r.country,
-        checks: [],
-      };
-      byKeyword.set(r.keyword_id, t);
-    }
-    if (r.checked_at && r.ids) {
-      t.checks.push({
-        checkedAt: new Date(r.checked_at),
-        volume: r.volume ?? 0,
-        difficulty: r.difficulty ?? 0,
-        results: r.ids.map((id) => ({ id })),
-      });
-    }
-  }
-  return [...byKeyword.values()];
 }
 
 function Placement({ rank }: { rank: number | null }) {
