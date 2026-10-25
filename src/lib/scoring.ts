@@ -171,3 +171,20 @@ export function difficultyLabel(
   if (difficulty < 70) return "contested";
   return "crowded";
 }
+
+const CJK =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+
+/**
+ * Whether listing text (name, subtitle and keyword field together) contains
+ * every content word of the phrase. Words written without spaces (Chinese,
+ * Japanese, Korean) also count when they appear inside a longer run.
+ */
+export function isCovered(phrase: string, listing: string): boolean {
+  const text = normalize(listing);
+  const words = new Set(text.split(" "));
+  const compact = text.replaceAll(" ", "");
+  return tokenize(phrase).every(
+    (t) => words.has(t) || (CJK.test(t) && compact.includes(t)),
+  );
+}

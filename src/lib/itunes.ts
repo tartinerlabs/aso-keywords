@@ -53,12 +53,13 @@ export async function search(
   );
 }
 
-/** Name and icon of one app from the US storefront, or null when Apple has no such app there. */
+/** Name and icon of one app in a storefront (US by default), or null when Apple has no such app there. */
 export async function lookup(
   id: number,
+  country = "us",
 ): Promise<{ id: number; name: string; icon: string } | null> {
   const res = await fetch(
-    `https://itunes.apple.com/lookup?id=${id}&country=us`,
+    `https://itunes.apple.com/lookup?id=${id}&country=${country}`,
     {
       signal: AbortSignal.timeout(10_000),
     },

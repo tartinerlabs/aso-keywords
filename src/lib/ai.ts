@@ -1,6 +1,11 @@
 import "server-only";
 
-import { APICallError, NoObjectGeneratedError, RetryError } from "ai";
+import {
+  APICallError,
+  NoObjectGeneratedError,
+  NoOutputGeneratedError,
+  RetryError,
+} from "ai";
 
 /** The one model every AI feature uses, routed through Vercel AI Gateway. */
 export const MODEL = "anthropic/claude-sonnet-5.5";
@@ -24,6 +29,9 @@ export function describeAiError(error: unknown): string {
     return "AI rate limit hit. Try again in a minute.";
   }
   if (type === "model_not_found") return `AI model ${MODEL} is not available.`;
+  if (NoOutputGeneratedError.isInstance(e)) {
+    return "The AI stopped before finishing. Try again.";
+  }
   if (NoObjectGeneratedError.isInstance(e)) {
     return "The AI returned an invalid result. Try again.";
   }
