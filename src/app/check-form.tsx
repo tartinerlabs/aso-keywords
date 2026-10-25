@@ -1,9 +1,15 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { checkKeywords, type Row, type State } from "@/app/actions";
+import {
+  checkKeywords,
+  localizeKeywords,
+  type Row,
+  type State,
+} from "@/app/actions";
 
 type Shown = State & { withApp: boolean };
+type Mode = "check" | "localize";
 
 const compact = new Intl.NumberFormat("en", { notation: "compact" });
 
@@ -76,8 +82,23 @@ function Difficulty({
   );
 }
 
-function ResultRow({ row, withApp }: { row: Row; withApp: boolean }) {
-  const phrase = <td className={`${cellClass} font-medium`}>{row.phrase}</td>;
+function ResultRow({
+  row,
+  withApp,
+  withSeed,
+}: {
+  row: Row;
+  withApp: boolean;
+  withSeed: boolean;
+}) {
+  const phrase = (
+    <>
+      <td className={`${cellClass} font-medium`}>{row.phrase}</td>
+      {withSeed && (
+        <td className={`${cellClass} text-muted-foreground`}>{row.seed}</td>
+      )}
+    </>
+  );
   const store = (
     <td className={`${cellClass} font-mono uppercase`}>{row.country}</td>
   );
@@ -139,13 +160,16 @@ function ResultRow({ row, withApp }: { row: Row; withApp: boolean }) {
 }
 
 export function CheckForm() {
+  const [mode, setMode] = useState<Mode>("check");
   const [phrases, setPhrases] = useState("");
   const [countries, setCountries] = useState("us");
   const [appId, setAppId] = useState("");
   // Controlled fields keep their values when React resets the form after an action
   const [state, formAction, pending] = useActionState(
     async (prev: Shown, formData: FormData): Promise<Shown> => ({
-      ...(await checkKeywords(prev, formData)),
+      ...(await (formData.get("mode") === "localize"
+        ? localizeKeywords
+        : checkKeywords)(prev, formData)),
       withApp: String(formData.get("appId") ?? "").trim() !== "",
     }),
     { rows: [], withApp: false },
@@ -154,6 +178,7 @@ export function CheckForm() {
   const throttled = state.rows.some(
     (r) => r.error?.includes("rate limited") ?? false,
   );
+  const withSeed = state.rows.some((r) => r.seed !== undefined);
   const cachedCount = state.rows.filter(
     (r) => r.error === undefined && r.cached,
   ).length;
@@ -164,10 +189,36 @@ export function CheckForm() {
         action={formAction}
         className="rounded-card border border-border bg-card p-4 shadow-[0_1px_0_var(--border)]"
       >
+        <fieldset className="mb-4 flex flex-wrap gap-x-4 gap-y-2">
+          <legend className="sr-only">Mode</legend>
+          {(
+            [
+              ["check", "Check phrases"],
+              ["localize", "Localize from English"],
+            ] as const
+          ).map(([value, label]) => (
+            <label
+              key={value}
+              className="flex min-h-8 cursor-pointer items-center gap-2"
+            >
+              <input
+                type="radio"
+                name="mode"
+                value={value}
+                checked={mode === value}
+                onChange={() => setMode(value)}
+                className="accent-primary"
+              />
+              <span className={mode === value ? "font-medium" : ""}>
+                {label}
+              </span>
+            </label>
+          ))}
+        </fieldset>
         <div className="grid gap-4 sm:grid-cols-[2fr_1fr_1fr]">
           <div>
             <label htmlFor="phrases" className={labelClass}>
-              Phrases
+              {mode === "localize" ? "English seed phrases" : "Phrases"}
             </label>
             <textarea
               id="phrases"
@@ -179,7 +230,9 @@ export function CheckForm() {
               className={`${fieldClass} resize-y`}
             />
             <p className="mt-1 text-xs text-muted-foreground">
-              One per line, or separated by commas.
+              {mode === "localize"
+                ? "One per line. AI writes 1 to 3 native search phrases for each storefront, then checks them."
+                : "One per line, or separated by commas."}
             </p>
           </div>
           <div>
@@ -230,7 +283,11 @@ export function CheckForm() {
             disabled={pending}
             className="min-h-10 rounded-control bg-primary px-5 font-medium text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 sm:min-h-8"
           >
-            {pending ? "Running…" : "Run"}
+            {pending
+              ? "Running…"
+              : mode === "localize"
+                ? "Localize and run"
+                : "Run"}
           </button>
         </div>
       </form>
@@ -274,6 +331,11 @@ export function CheckForm() {
                     <th scope="col" className={headClass}>
                       Phrase
                     </th>
+                    {withSeed && (
+                      <th scope="col" className={headClass}>
+                        From
+                      </th>
+                    )}
                     <th scope="col" className={headClass}>
                       Store
                     </th>
@@ -310,6 +372,7 @@ export function CheckForm() {
                       key={`${row.country}:${row.phrase}`}
                       row={row}
                       withApp={state.withApp}
+                      withSeed={withSeed}
                     />
                   ))}
                 </tbody>
