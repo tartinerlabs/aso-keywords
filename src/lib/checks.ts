@@ -112,7 +112,7 @@ export async function refreshTracked({
   limit: number;
   deadline: number;
 }) {
-  const { rows: due } = await db.execute<{
+  const { rows } = await db.execute<{
     phrase: string;
     country: string;
     my_app: string | null;
@@ -135,7 +135,10 @@ export async function refreshTracked({
         where c.keyword_id = k.id and c.checked_at > now() - interval '20 hours'
       )
     order by (select max(c.checked_at) from keyword_checks c where c.keyword_id = k.id) asc nulls first
-    limit ${limit}`);
+    limit ${limit + 1}`);
+  // One extra row tells whether more are due than this run takes
+  const more = rows.length > limit;
+  const due = rows.slice(0, limit);
 
   let checked = 0;
   let failed = 0;
@@ -169,7 +172,7 @@ export async function refreshTracked({
     }
   }
 
-  return { due: due.length, checked, failed, throttled };
+  return { due: due.length, checked, failed, throttled, more };
 }
 
 /** Checks of history kept per tracked keyword. */

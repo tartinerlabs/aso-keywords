@@ -108,7 +108,7 @@ function ResultRow({
         {phrase}
         {store}
         <td
-          colSpan={withApp ? 6 : 5}
+          colSpan={withApp ? 5 : 4}
           className={`${cellClass} text-destructive`}
         >
           {row.error}

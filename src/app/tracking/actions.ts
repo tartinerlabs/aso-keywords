@@ -27,6 +27,18 @@ const appIdField = z
   .regex(/^\d{1,15}$/, "App ID must be a number")
   .transform(Number);
 
+const NOT_MINE = "Add the app on the Tracking page first";
+
+/** Whether the ID is one of my apps; bound IDs arrive from the client, so check them. */
+async function isMine(appId: number) {
+  if (!Number.isSafeInteger(appId) || appId <= 0) return false;
+  const [row] = await db
+    .select({ trackId: apps.trackId })
+    .from(apps)
+    .where(and(eq(apps.trackId, appId), eq(apps.isMine, true)));
+  return Boolean(row);
+}
+
 /** The app's row, looked up on the App Store (US) when it is not saved yet. */
 async function findApp(
   id: number,
@@ -80,6 +92,7 @@ export async function addKeywords(
     });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const { phrases, countries } = parsed.data;
+  if (!(await isMine(appId))) return { error: NOT_MINE };
 
   const pairs = phrases.flatMap((phrase) =>
     countries.map((country) => ({ phrase, country })),
@@ -110,11 +123,7 @@ export async function trackPairs(
     })
     .safeParse({ appId, pairs });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
-  const [mine] = await db
-    .select({ trackId: apps.trackId })
-    .from(apps)
-    .where(and(eq(apps.trackId, appId), eq(apps.isMine, true)));
-  if (!mine) return { error: "Add the app on the Tracking page first" };
+  if (!(await isMine(appId))) return { error: NOT_MINE };
   const unique = [
     ...new Map(
       parsed.data.pairs.map((p) => [`${p.country}:${p.phrase}`, p]),
@@ -174,6 +183,7 @@ export async function addCompetitor(
   if (competitorId === appId) {
     return { error: "That is this app. Enter another app's ID." };
   }
+  if (!(await isMine(appId))) return { error: NOT_MINE };
 
   const app = await findApp(competitorId);
   if (typeof app === "string") return { error: app };
@@ -208,7 +218,8 @@ export async function refreshApp(
   appId: number,
   _prev: FormState,
 ): Promise<FormState> {
-  const { due, checked, failed, throttled } = await refreshTracked({
+  if (!(await isMine(appId))) return { error: NOT_MINE };
+  const { due, checked, failed, throttled, more } = await refreshTracked({
     appId,
     limit: MAX_REFRESH,
     deadline: Date.now() + REFRESH_BUDGET_MS,
@@ -221,6 +232,8 @@ export async function refreshApp(
   const parts = [`Checked ${checked} of ${due}`];
   if (failed > 0) parts.push(`${failed} failed`);
   if (throttled) parts.push("Apple is throttling searches, try again later");
-  else if (checked + failed < due) parts.push("run again for the rest");
+  else if (more || checked + failed < due) {
+    parts.push("run again for the rest");
+  }
   return { message: `${parts.join(", ")}.` };
 }

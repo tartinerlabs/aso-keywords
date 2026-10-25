@@ -99,7 +99,8 @@ async function Tracking({
       </div>
 
       {selected ? (
-        <AppDetail app={selected} />
+        // Keyed so form messages and drafts reset when switching apps
+        <AppDetail key={selected.trackId} app={selected} />
       ) : (
         <div className="rounded-card border border-dashed border-border px-4 py-10 text-center">
           <p className="font-medium">No apps yet.</p>

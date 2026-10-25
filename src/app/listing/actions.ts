@@ -2,6 +2,7 @@
 
 import { generateText, Output } from "ai";
 import { and, eq, sql } from "drizzle-orm";
+import { refresh } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db";
 import { apps } from "@/db/schema";
@@ -324,6 +325,8 @@ export async function saveListingDraft(
 
   try {
     const saved = await saveDraft(config, appId, drafts, versionString || null);
+    // Re-render the page so the version state and current listing are fresh
+    refresh();
     const where = saved.created
       ? `new version ${saved.versionString}`
       : `version ${saved.versionString}`;
