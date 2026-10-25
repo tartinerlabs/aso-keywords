@@ -1,23 +1,21 @@
 "use server";
 
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { keywordChecks, keywords, type TopApp } from "@/db/schema";
-import { InvalidStorefrontError, search, ThrottledError } from "@/lib/itunes";
 import {
-  difficultyLabel,
-  difficultyScore,
-  normalize,
-  rankOf,
-  volumeScore,
-} from "@/lib/scoring";
+  APPLE_GAP_MS,
+  countriesField,
+  phrasesField,
+  recordCheck,
+  sleep,
+} from "@/lib/checks";
+import { InvalidStorefrontError, ThrottledError } from "@/lib/itunes";
+import { difficultyLabel, rankOf } from "@/lib/scoring";
 
 const MAX_CHECKS = 15;
-const MAX_PHRASE_LENGTH = 100;
 const CACHE_MS = 24 * 60 * 60 * 1000;
-// Gap between Apple requests, to stay under their rate limit
-const APPLE_GAP_MS = 3500;
 
 export type Row = { country: string; phrase: string } & (
   | { error: string }
@@ -41,48 +39,14 @@ export type Row = { country: string; phrase: string } & (
 export type State = { rows: Row[]; error?: string };
 
 const input = z.object({
-  phrases: z
-    .string()
-    .transform((s) => [
-      ...new Set(s.split(/[\n,]/).map(normalize).filter(Boolean)),
-    ])
-    .pipe(
-      z
-        .array(
-          z
-            .string()
-            .max(
-              MAX_PHRASE_LENGTH,
-              `Keep keywords under ${MAX_PHRASE_LENGTH} characters`,
-            ),
-        )
-        .min(1, "Enter at least one keyword"),
-    ),
-  countries: z
-    .string()
-    .transform((s) => [
-      ...new Set(
-        s
-          .toLowerCase()
-          .split(/[\s,]+/)
-          .filter(Boolean),
-      ),
-    ])
-    .pipe(
-      z
-        .array(
-          z.string().regex(/^[a-z]{2}$/, "Storefront codes are two letters"),
-        )
-        .min(1, "Enter at least one storefront"),
-    ),
+  phrases: phrasesField,
+  countries: countriesField,
   appId: z
     .string()
     .trim()
     .regex(/^(\d{1,15})?$/, "App ID must be a number")
     .transform((s) => (s ? Number(s) : null)),
 });
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function median(values: number[]): number | null {
   if (values.length === 0) return null;
@@ -184,35 +148,8 @@ export async function checkKeywords(
         if (wait > 0) await sleep(wait);
         lastRequestAt = Date.now();
 
-        const topApps = await search(phrase, country);
-        const volume = volumeScore(phrase, topApps);
-        const difficulty = difficultyScore(phrase, topApps);
-        const rank = appId === null ? null : rankOf(topApps, appId);
-
-        const [{ id: keywordId }] = await db
-          .insert(keywords)
-          // No-op update so RETURNING gives the id of an existing row too
-          .values({ phrase, country })
-          .onConflictDoUpdate({
-            target: [keywords.country, keywords.phrase],
-            set: { phrase: sql`excluded.phrase` },
-          })
-          .returning({ id: keywords.id });
-
-        const [inserted] = await db
-          .insert(keywordChecks)
-          .values({ keywordId, volume, difficulty, topApps, appId, rank })
-          .returning({ checkedAt: keywordChecks.checkedAt });
-
-        rows.push(
-          toRow(
-            country,
-            phrase,
-            { volume, difficulty, topApps, checkedAt: inserted.checkedAt },
-            appId,
-            false,
-          ),
-        );
+        const check = await recordCheck(phrase, country, appId);
+        rows.push(toRow(country, phrase, check, appId, false));
       } catch (e) {
         let error = "Check failed";
         if (e instanceof ThrottledError) {

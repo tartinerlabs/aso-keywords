@@ -1,10 +1,12 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  boolean,
   check,
   index,
   integer,
   jsonb,
+  primaryKey,
   smallint,
   snakeCase,
   text,
@@ -58,5 +60,45 @@ export const keywordChecks = snakeCase.table(
       "keyword_checks_difficulty_ck",
       sql`${t.difficulty} between 0 and 100`,
     ),
+  ],
+);
+
+// Apps by App Store track ID: mine, plus competitors I compare against
+export const apps = snakeCase.table("apps", {
+  trackId: bigint({ mode: "number" }).primaryKey(),
+  name: text().notNull(),
+  icon: text().notNull(),
+  isMine: boolean().notNull().default(false),
+  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+});
+
+// Keywords tracked for an app (refreshed daily)
+export const appKeywords = snakeCase.table(
+  "app_keywords",
+  {
+    appId: bigint({ mode: "number" })
+      .notNull()
+      .references(() => apps.trackId, { onDelete: "cascade" }),
+    keywordId: integer()
+      .notNull()
+      .references(() => keywords.id, { onDelete: "cascade" }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.appId, t.keywordId] })],
+);
+
+export const appCompetitors = snakeCase.table(
+  "app_competitors",
+  {
+    appId: bigint({ mode: "number" })
+      .notNull()
+      .references(() => apps.trackId, { onDelete: "cascade" }),
+    competitorId: bigint({ mode: "number" })
+      .notNull()
+      .references(() => apps.trackId, { onDelete: "cascade" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.appId, t.competitorId] }),
+    check("app_competitors_self_ck", sql`${t.appId} <> ${t.competitorId}`),
   ],
 );

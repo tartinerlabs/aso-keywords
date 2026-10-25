@@ -52,3 +52,31 @@ export async function search(
       : [],
   );
 }
+
+/** Name and icon of one app from the US storefront, or null when Apple has no such app there. */
+export async function lookup(
+  id: number,
+): Promise<{ id: number; name: string; icon: string } | null> {
+  const res = await fetch(
+    `https://itunes.apple.com/lookup?id=${id}&country=us`,
+    {
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
+  if (res.status === 403 || res.status === 429) throw new ThrottledError();
+  if (!res.ok) throw new Error(`App Store lookup failed (${res.status})`);
+
+  let data: { results?: Record<string, unknown>[] };
+  try {
+    data = await res.json();
+  } catch {
+    throw new ThrottledError("App Store lookup returned a non-JSON response");
+  }
+  const app = data.results?.find((r) => r.trackId === id);
+  if (!app) return null;
+  return {
+    id,
+    name: (app.trackName as string) ?? "",
+    icon: (app.artworkUrl100 as string) ?? "",
+  };
+}
