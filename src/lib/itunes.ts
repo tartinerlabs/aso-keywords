@@ -10,6 +10,14 @@ export class ThrottledError extends Error {
   }
 }
 
+/** Apple rejected the request (400); the storefront code is not one it knows. */
+export class InvalidStorefrontError extends Error {
+  constructor(country: string) {
+    super(`Unknown storefront ${country}`);
+    this.name = "InvalidStorefrontError";
+  }
+}
+
 /** App Store search results for a phrase in one storefront, in rank order. */
 export async function search(
   phrase: string,
@@ -19,7 +27,8 @@ export async function search(
   const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
 
   if (res.status === 403 || res.status === 429) throw new ThrottledError();
-  // A 400 means the term was badly encoded: not retryable
+  // The term is always encoded, so a 400 means Apple does not know the storefront
+  if (res.status === 400) throw new InvalidStorefrontError(country);
   if (!res.ok) throw new Error(`App Store search failed (${res.status})`);
 
   let data: { results?: Record<string, unknown>[] };

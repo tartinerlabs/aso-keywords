@@ -38,12 +38,12 @@ const STOPWORDS = new Set([
   "con",
 ]);
 
-/** Lowercase, Unicode-normalise, keep letters/digits (any script), collapse to single spaces. Keeps diacritics. */
+/** Lowercase, Unicode-normalise, keep letters, marks and digits (any script), collapse to single spaces. Keeps diacritics. */
 export function normalize(s: string): string {
   return s
     .normalize("NFKC")
     .toLocaleLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/[^\p{L}\p{N}\p{M}]+/gu, " ")
     .trim();
 }
 

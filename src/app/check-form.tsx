@@ -8,7 +8,7 @@ type Shown = State & { withApp: boolean };
 const compact = new Intl.NumberFormat("en", { notation: "compact" });
 
 const fieldClass =
-  "w-full rounded-control border border-input bg-card px-2.5 py-1.5 outline-none placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring";
+  "w-full rounded-control text-base sm:text-sm border border-input bg-card px-2.5 py-1.5 outline-none placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring";
 const labelClass = "mb-1 block text-xs font-medium";
 const headClass =
   "px-2 py-1.5 text-left text-[11px] font-medium uppercase tracking-[0.04em] text-muted-foreground";

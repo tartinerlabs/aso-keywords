@@ -34,6 +34,7 @@
     --input: oklch(0.32 0.008 60);
     --primary: oklch(0.7 0.13 42);
     --primary-foreground: oklch(0.18 0.01 60);
+    --destructive: oklch(0.72 0.17 25);
     --notice: oklch(0.72 0.12 80);
     --notice-foreground: oklch(0.18 0.02 70);
     --meter-track: oklch(0.3 0.008 60);

@@ -1,10 +1,10 @@
 "use server";
 
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { keywordChecks, keywords, type TopApp } from "@/db/schema";
-import { search, ThrottledError } from "@/lib/itunes";
+import { InvalidStorefrontError, search, ThrottledError } from "@/lib/itunes";
 import {
   difficultyLabel,
   difficultyScore,
@@ -148,22 +148,22 @@ export async function checkKeywords(
   for (const phrase of phrases) {
     for (const country of countries) {
       try {
-        const [{ id: keywordId }] = await db
-          .insert(keywords)
-          // No-op update so RETURNING gives the id of an existing row too
-          .values({ phrase, country })
-          .onConflictDoUpdate({
-            target: [keywords.country, keywords.phrase],
-            set: { phrase: sql`excluded.phrase` },
-          })
-          .returning({ id: keywords.id });
+        // Look the keyword up without inserting: an unknown storefront must not leave a row behind
+        const [existing] = await db
+          .select({ id: keywords.id })
+          .from(keywords)
+          .where(
+            and(eq(keywords.country, country), eq(keywords.phrase, phrase)),
+          );
 
-        const [latest] = await db
-          .select()
-          .from(keywordChecks)
-          .where(eq(keywordChecks.keywordId, keywordId))
-          .orderBy(desc(keywordChecks.checkedAt))
-          .limit(1);
+        const [latest] = existing
+          ? await db
+              .select()
+              .from(keywordChecks)
+              .where(eq(keywordChecks.keywordId, existing.id))
+              .orderBy(desc(keywordChecks.checkedAt))
+              .limit(1)
+          : [];
 
         if (latest && Date.now() - latest.checkedAt.getTime() < CACHE_MS) {
           rows.push(toRow(country, phrase, latest, appId, true));
@@ -189,6 +189,16 @@ export async function checkKeywords(
         const difficulty = difficultyScore(phrase, topApps);
         const rank = appId === null ? null : rankOf(topApps, appId);
 
+        const [{ id: keywordId }] = await db
+          .insert(keywords)
+          // No-op update so RETURNING gives the id of an existing row too
+          .values({ phrase, country })
+          .onConflictDoUpdate({
+            target: [keywords.country, keywords.phrase],
+            set: { phrase: sql`excluded.phrase` },
+          })
+          .returning({ id: keywords.id });
+
         const [inserted] = await db
           .insert(keywordChecks)
           .values({ keywordId, volume, difficulty, topApps, appId, rank })
@@ -208,6 +218,8 @@ export async function checkKeywords(
         if (e instanceof ThrottledError) {
           throttled = true;
           error = "App Store search is rate limited. Try again in a minute.";
+        } else if (e instanceof InvalidStorefrontError) {
+          error = `Unknown storefront ${country.toUpperCase()}`;
         } else if (e instanceof DOMException && e.name === "TimeoutError") {
           error = "App Store search timed out";
         } else {
