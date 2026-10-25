@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { type ReactNode, useActionState, useState } from "react";
 import {
   checkKeywords,
   localizeKeywords,
@@ -159,6 +159,113 @@ function ResultRow({
   );
 }
 
+/** Error, throttle notice and the results table for a check run. */
+export function Results({
+  state,
+  pending,
+  withApp,
+  empty,
+}: {
+  state: State;
+  pending: boolean;
+  withApp: boolean;
+  /** Shown before anything has been checked */
+  empty?: ReactNode;
+}) {
+  const throttled = state.rows.some(
+    (r) => r.error?.includes("rate limited") ?? false,
+  );
+  const withSeed = state.rows.some((r) => r.seed !== undefined);
+  const cachedCount = state.rows.filter(
+    (r) => r.error === undefined && r.cached,
+  ).length;
+
+  return (
+    <section aria-live="polite" aria-busy={pending} className="mt-6">
+      {state.error && (
+        <p
+          role="alert"
+          className="mb-4 rounded-control border border-destructive px-3 py-2 text-destructive"
+        >
+          {state.error}
+        </p>
+      )}
+      {throttled && (
+        <output className="block mb-4 rounded-control bg-notice px-3 py-2 text-notice-foreground">
+          Apple is throttling searches. Wait a minute, then run again. Rows
+          already checked in the last 24 hours are still served.
+        </output>
+      )}
+      {state.rows.length === 0 ? (
+        !state.error && empty
+      ) : (
+        <>
+          <p className="mb-2 text-xs text-muted-foreground">
+            {state.rows.length} {state.rows.length === 1 ? "check" : "checks"}
+            {cachedCount > 0 && `, ${cachedCount} from the last 24 hours`}
+          </p>
+          <div
+            className={`overflow-x-auto rounded-card border border-border bg-card ${pending ? "opacity-60" : ""}`}
+          >
+            <table className="w-full min-w-[44rem] border-collapse text-[13px] tabular-nums">
+              <thead>
+                <tr>
+                  <th scope="col" className={headClass}>
+                    Phrase
+                  </th>
+                  {withSeed && (
+                    <th scope="col" className={headClass}>
+                      From
+                    </th>
+                  )}
+                  <th scope="col" className={headClass}>
+                    Store
+                  </th>
+                  {withApp && (
+                    <th scope="col" className={headClass}>
+                      Placement
+                    </th>
+                  )}
+                  <th
+                    scope="col"
+                    className={headClass}
+                    title="How hard the top 50 apps target this phrase. Not Apple search popularity."
+                  >
+                    Volume
+                  </th>
+                  <th
+                    scope="col"
+                    className={headClass}
+                    title="Competition, from rating counts of the top 10 apps."
+                  >
+                    Difficulty
+                  </th>
+                  <th scope="col" className={headClass}>
+                    Leader
+                  </th>
+                  <th scope="col" className={`${headClass} text-right`}>
+                    Top-10 ratings
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {state.rows.map((row) => (
+                  <ResultRow
+                    key={`${row.country}:${row.phrase}`}
+                    row={row}
+                    withApp={withApp}
+                    withSeed={withSeed}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 export function CheckForm() {
   const [mode, setMode] = useState<Mode>("check");
   const [phrases, setPhrases] = useState("");
@@ -174,14 +281,6 @@ export function CheckForm() {
     }),
     { rows: [], withApp: false },
   );
-
-  const throttled = state.rows.some(
-    (r) => r.error?.includes("rate limited") ?? false,
-  );
-  const withSeed = state.rows.some((r) => r.seed !== undefined);
-  const cachedCount = state.rows.filter(
-    (r) => r.error === undefined && r.cached,
-  ).length;
 
   return (
     <>
@@ -292,95 +391,19 @@ export function CheckForm() {
         </div>
       </form>
 
-      <section aria-live="polite" aria-busy={pending} className="mt-6">
-        {state.error && (
-          <p
-            role="alert"
-            className="mb-4 rounded-control border border-destructive px-3 py-2 text-destructive"
-          >
-            {state.error}
-          </p>
-        )}
-        {throttled && (
-          <output className="block mb-4 rounded-control bg-notice px-3 py-2 text-notice-foreground">
-            Apple is throttling searches. Wait a minute, then run again. Rows
-            already checked in the last 24 hours are still served.
-          </output>
-        )}
-        {state.rows.length === 0 ? (
-          !state.error && (
-            <div className="rounded-card border border-dashed border-border px-4 py-10 text-center">
-              <p className="font-medium">Nothing checked yet.</p>
-              <p className="mt-1 text-muted-foreground">
-                Add a phrase per line, pick storefronts, then Run.
-              </p>
-            </div>
-          )
-        ) : (
-          <>
-            <p className="mb-2 text-xs text-muted-foreground">
-              {state.rows.length} {state.rows.length === 1 ? "check" : "checks"}
-              {cachedCount > 0 && `, ${cachedCount} from the last 24 hours`}
+      <Results
+        state={state}
+        pending={pending}
+        withApp={state.withApp}
+        empty={
+          <div className="rounded-card border border-dashed border-border px-4 py-10 text-center">
+            <p className="font-medium">Nothing checked yet.</p>
+            <p className="mt-1 text-muted-foreground">
+              Add a phrase per line, pick storefronts, then Run.
             </p>
-            <div
-              className={`overflow-x-auto rounded-card border border-border bg-card ${pending ? "opacity-60" : ""}`}
-            >
-              <table className="w-full min-w-[44rem] border-collapse text-[13px] tabular-nums">
-                <thead>
-                  <tr>
-                    <th scope="col" className={headClass}>
-                      Phrase
-                    </th>
-                    {withSeed && (
-                      <th scope="col" className={headClass}>
-                        From
-                      </th>
-                    )}
-                    <th scope="col" className={headClass}>
-                      Store
-                    </th>
-                    {state.withApp && (
-                      <th scope="col" className={headClass}>
-                        Placement
-                      </th>
-                    )}
-                    <th
-                      scope="col"
-                      className={headClass}
-                      title="How hard the top 50 apps target this phrase. Not Apple search popularity."
-                    >
-                      Volume
-                    </th>
-                    <th
-                      scope="col"
-                      className={headClass}
-                      title="Competition, from rating counts of the top 10 apps."
-                    >
-                      Difficulty
-                    </th>
-                    <th scope="col" className={headClass}>
-                      Leader
-                    </th>
-                    <th scope="col" className={`${headClass} text-right`}>
-                      Top-10 ratings
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {state.rows.map((row) => (
-                    <ResultRow
-                      key={`${row.country}:${row.phrase}`}
-                      row={row}
-                      withApp={state.withApp}
-                      withSeed={withSeed}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-      </section>
+          </div>
+        }
+      />
     </>
   );
 }

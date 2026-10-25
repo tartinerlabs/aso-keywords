@@ -6,7 +6,12 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/db";
 import { appCompetitors, appKeywords, apps, keywords } from "@/db/schema";
-import { countriesField, phrasesField, refreshTracked } from "@/lib/checks";
+import {
+  countriesField,
+  pairsField,
+  phrasesField,
+  refreshTracked,
+} from "@/lib/checks";
 import { lookup, ThrottledError } from "@/lib/itunes";
 
 const MAX_TRACKED_PER_ADD = 50;
@@ -85,6 +90,44 @@ export async function addKeywords(
     };
   }
 
+  return track(appId, pairs);
+}
+
+/** Track explicit storefront and phrase pairs, e.g. picked from AI ideas. */
+export async function trackPairs(
+  appId: number,
+  pairs: { country: string; phrase: string }[],
+): Promise<FormState> {
+  const parsed = z
+    .object({
+      appId: z.number().int().positive(),
+      pairs: pairsField
+        .min(1, "Select at least one keyword")
+        .max(
+          MAX_TRACKED_PER_ADD,
+          `Add at most ${MAX_TRACKED_PER_ADD} at a time`,
+        ),
+    })
+    .safeParse({ appId, pairs });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const [mine] = await db
+    .select({ trackId: apps.trackId })
+    .from(apps)
+    .where(and(eq(apps.trackId, appId), eq(apps.isMine, true)));
+  if (!mine) return { error: "Add the app on the Tracking page first" };
+  const unique = [
+    ...new Map(
+      parsed.data.pairs.map((p) => [`${p.country}:${p.phrase}`, p]),
+    ).values(),
+  ];
+  return track(appId, unique);
+}
+
+/** Save the keywords and link them to the app. */
+async function track(
+  appId: number,
+  pairs: { country: string; phrase: string }[],
+): Promise<FormState> {
   const rows = await db
     .insert(keywords)
     .values(pairs)

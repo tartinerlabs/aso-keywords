@@ -49,6 +49,25 @@ export const countriesField = z
       .min(1, "Enter at least one storefront"),
   );
 
+/** Explicit storefront and phrase pairs, normalised; deduplicate before use. */
+export const pairsField = z.array(
+  z.object({
+    country: z.string().regex(/^[a-z]{2}$/, "Storefront codes are two letters"),
+    phrase: z
+      .string()
+      .transform(normalize)
+      .pipe(
+        z
+          .string()
+          .min(1, "Keywords cannot be empty")
+          .max(
+            MAX_PHRASE_LENGTH,
+            `Keep keywords under ${MAX_PHRASE_LENGTH} characters`,
+          ),
+      ),
+  }),
+);
+
 /** Search Apple once, score the results, then save the keyword and a new check. */
 export async function recordCheck(
   phrase: string,

@@ -9,6 +9,7 @@ import { describeAiError, MODEL } from "@/lib/ai";
 import {
   APPLE_GAP_MS,
   countriesField,
+  pairsField,
   phrasesField,
   recordCheck,
   sleep,
@@ -123,6 +124,30 @@ export async function checkKeywords(
       appId,
     ),
   };
+}
+
+/** Check explicit storefront and phrase pairs, e.g. picked from AI ideas. */
+export async function checkPairs(
+  pairs: { country: string; phrase: string }[],
+  appId: number | null,
+): Promise<State> {
+  const parsed = z
+    .object({
+      pairs: pairsField
+        .min(1, "Select at least one keyword")
+        .max(MAX_CHECKS, `Select at most ${MAX_CHECKS} keywords at a time`),
+      appId: z.number().int().positive().nullable(),
+    })
+    .safeParse({ pairs, appId });
+  if (!parsed.success) {
+    return { rows: [], error: parsed.error.issues[0].message };
+  }
+  const unique = [
+    ...new Map(
+      parsed.data.pairs.map((p) => [`${p.country}:${p.phrase}`, p]),
+    ).values(),
+  ];
+  return { rows: await runChecks(unique, parsed.data.appId) };
 }
 
 /** Check each pair in order, reusing checks from the last 24 hours. */
