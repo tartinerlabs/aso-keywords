@@ -216,7 +216,7 @@ function CurrentListing({ listing }: { listing: AscListing }) {
   return (
     <section className="mb-6">
       <h2 className={sectionHeadClass}>Current listing in App Store Connect</h2>
-      <div className="overflow-x-auto rounded-card border border-border bg-card">
+      <div className="relative overflow-x-auto rounded-card border border-border bg-card">
         <table className="w-full min-w-[40rem] text-sm">
           <thead>
             <tr className="border-b border-border">

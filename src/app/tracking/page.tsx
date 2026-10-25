@@ -282,7 +282,7 @@ async function AppDetail({ app }: { app: App }) {
   const checkedCount = rows.filter((r) => r.latest).length;
 
   return (
-    <div className="grid gap-6">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
       <section className="rounded-card border border-border bg-card p-4 shadow-[0_1px_0_var(--border)]">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -317,7 +317,7 @@ async function AppDetail({ app }: { app: App }) {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-card border border-border bg-card">
+          <div className="relative overflow-x-auto rounded-card border border-border bg-card">
             <table className="w-full min-w-[52rem] border-collapse text-[13px] tabular-nums">
               <thead>
                 <tr>
@@ -458,7 +458,7 @@ async function AppDetail({ app }: { app: App }) {
         )}
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-[1fr_20rem]">
+      <section className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-[minmax(0,1fr)_20rem]">
         <div>
           <h3 className={sectionHeadClass}>Competitors</h3>
           {competitors.length === 0 ? (

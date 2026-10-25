@@ -205,7 +205,7 @@ export function Results({
             {cachedCount > 0 && `, ${cachedCount} from the last 24 hours`}
           </p>
           <div
-            className={`overflow-x-auto rounded-card border border-border bg-card ${pending ? "opacity-60" : ""}`}
+            className={`relative overflow-x-auto rounded-card border border-border bg-card ${pending ? "opacity-60" : ""}`}
           >
             <table className="w-full min-w-[44rem] border-collapse text-[13px] tabular-nums">
               <thead>
