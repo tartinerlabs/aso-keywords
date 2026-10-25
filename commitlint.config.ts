@@ -20,7 +20,7 @@ const config: UserConfig = {
         "test",
       ],
     ],
-    "scope-enum": [RuleConfigSeverity.Error, "always", []],
+    "scope-empty": [RuleConfigSeverity.Error, "always"],
   },
 };
 
