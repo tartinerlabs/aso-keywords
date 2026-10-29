@@ -1,11 +1,13 @@
 "use server";
 
+import { generateText, Output } from "ai";
 import { and, eq, sql } from "drizzle-orm";
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/db";
 import { appCompetitors, appKeywords, apps, keywords } from "@/db/schema";
+import { describeAiError, MODEL } from "@/lib/ai";
 import {
   countriesField,
   pairsField,
@@ -13,6 +15,7 @@ import {
   refreshTracked,
 } from "@/lib/checks";
 import { lookup, ThrottledError } from "@/lib/itunes";
+import { normalize } from "@/lib/scoring";
 
 const MAX_TRACKED_PER_ADD = 50;
 const MAX_REFRESH = 15;
@@ -94,16 +97,70 @@ export async function addKeywords(
   const { phrases, countries } = parsed.data;
   if (!(await isMine(appId))) return { error: NOT_MINE };
 
-  const pairs = phrases.flatMap((phrase) =>
-    countries.map((country) => ({ phrase, country })),
-  );
-  if (pairs.length > MAX_TRACKED_PER_ADD) {
+  const combos = phrases.length * countries.length;
+  if (combos > MAX_TRACKED_PER_ADD) {
     return {
-      error: `That is ${pairs.length} keyword and storefront pairs. Add at most ${MAX_TRACKED_PER_ADD} at a time.`,
+      error: `That is ${combos} keyword and storefront pairs. Add at most ${MAX_TRACKED_PER_ADD} at a time.`,
     };
   }
 
-  return track(appId, pairs);
+  if (formData.get("localize") === "on") {
+    const local = await localize(phrases, countries);
+    if (typeof local === "string") return { error: local };
+    return track(appId, local);
+  }
+  return track(
+    appId,
+    phrases.flatMap((phrase) =>
+      countries.map((country) => ({ phrase, country })),
+    ),
+  );
+}
+
+const localizedSchema = z.object({
+  results: z.array(
+    z.object({
+      label: z.string().describe("The English keyword, exactly as given"),
+      country: z.string().describe("Storefront code, exactly as given"),
+      phrase: z.string().describe("The native App Store search phrase"),
+    }),
+  ),
+});
+
+/** One native phrase per English keyword and storefront, labelled with the English keyword. */
+async function localize(
+  labels: string[],
+  countries: string[],
+): Promise<Pair[] | string> {
+  let results: z.infer<typeof localizedSchema>["results"];
+  try {
+    const { output } = await generateText({
+      model: MODEL,
+      instructions:
+        "You are an App Store keyword researcher. For each English keyword and storefront, write the one phrase people in that storefront most likely type into App Store search for it, in the storefront's primary language and script. Prefer natural local wording over literal translation; keep the English keyword where locals search in English. Lowercase, 1 to 4 words, no brand names.",
+      prompt: `Keywords: ${labels.map((l) => `"${l}"`).join(", ")}\nStorefronts: ${countries.join(", ")}\nReturn one entry per keyword and storefront.`,
+      output: Output.object({ schema: localizedSchema }),
+      maxOutputTokens: 2000,
+      timeout: 45_000,
+    });
+    results = output.results;
+  } catch (e) {
+    console.error("localize", e);
+    return describeAiError(e);
+  }
+
+  // Keep only requested keywords and storefronts, one phrase each
+  const pairs = new Map<string, Pair>();
+  for (const r of results) {
+    const label = normalize(r.label);
+    const country = r.country.trim().toLowerCase();
+    const phrase = normalize(r.phrase);
+    if (!labels.includes(label) || !countries.includes(country)) continue;
+    if (!phrase || phrase.length > 100) continue;
+    pairs.set(`${label}:${country}`, { country, phrase, label });
+  }
+  if (pairs.size === 0) return "The AI returned no usable phrases. Try again.";
+  return [...pairs.values()];
 }
 
 /** Track explicit storefront and phrase pairs, e.g. picked from AI ideas. */
@@ -132,24 +189,45 @@ export async function trackPairs(
   return track(appId, unique);
 }
 
+/** A phrase to track in a storefront; label groups local phrases of one keyword. */
+type Pair = { country: string; phrase: string; label?: string };
+
 /** Save the keywords and link them to the app. */
-async function track(
-  appId: number,
-  pairs: { country: string; phrase: string }[],
-): Promise<FormState> {
+async function track(appId: number, input: Pair[]): Promise<FormState> {
+  // One per storefront and phrase; a second insert of the same row would fail
+  const pairs = [
+    ...new Map(input.map((p) => [`${p.country}:${p.phrase}`, p])).values(),
+  ];
   const rows = await db
     .insert(keywords)
-    .values(pairs)
+    .values(pairs.map(({ country, phrase }) => ({ country, phrase })))
     // No-op update so RETURNING gives the ids of existing rows too
     .onConflictDoUpdate({
       target: [keywords.country, keywords.phrase],
       set: { phrase: sql`excluded.phrase` },
     })
-    .returning({ id: keywords.id });
+    .returning({
+      id: keywords.id,
+      country: keywords.country,
+      phrase: keywords.phrase,
+    });
+  const labels = new Map(
+    pairs.map((p) => [`${p.country}:${p.phrase}`, p.label]),
+  );
 
   const added = await db
     .insert(appKeywords)
-    .values(rows.map((r) => ({ appId, keywordId: r.id })))
+    .values(
+      rows.map((r) => {
+        const label = labels.get(`${r.country}:${r.phrase}`);
+        // The phrase itself is the default label, so store only a different one
+        return {
+          appId,
+          keywordId: r.id,
+          label: label && label !== r.phrase ? label : null,
+        };
+      }),
+    )
     .onConflictDoNothing()
     .returning({ keywordId: appKeywords.keywordId });
 
@@ -167,6 +245,15 @@ export async function removeKeyword(appId: number, keywordId: number) {
     .where(
       and(eq(appKeywords.appId, appId), eq(appKeywords.keywordId, keywordId)),
     );
+  refresh();
+}
+
+/** Stop tracking a keyword in every storefront. */
+export async function removeLabel(appId: number, label: string) {
+  await db.execute(sql`
+    delete from app_keywords ak using keywords k
+    where k.id = ak.keyword_id and ak.app_id = ${appId}
+      and coalesce(ak.label, k.phrase) = ${label}`);
   refresh();
 }
 

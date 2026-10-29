@@ -188,6 +188,8 @@ export type Check = {
 
 export type Tracked = {
   keywordId: number;
+  /** Groups local phrases of one keyword across storefronts */
+  label: string;
   phrase: string;
   country: string;
   /** Newest first */
@@ -199,6 +201,7 @@ export async function loadTracked(appId: number): Promise<Tracked[]> {
   // Last 30 checks per tracked keyword; only result IDs, not the full lists
   const { rows } = await db.execute<{
     keyword_id: number;
+    label: string;
     phrase: string;
     country: string;
     // Raw timestamptz text from db.execute
@@ -207,7 +210,8 @@ export async function loadTracked(appId: number): Promise<Tracked[]> {
     difficulty: number | null;
     ids: number[] | null;
   }>(sql`
-    select k.id as keyword_id, k.phrase, k.country,
+    select k.id as keyword_id, coalesce(ak.label, k.phrase) as label,
+      k.phrase, k.country,
       c.checked_at, c.volume, c.difficulty, c.ids
     from app_keywords ak
     join keywords k on k.id = ak.keyword_id
@@ -220,7 +224,7 @@ export async function loadTracked(appId: number): Promise<Tracked[]> {
       limit ${HISTORY}
     ) c on true
     where ak.app_id = ${appId}
-    order by k.phrase, k.country, c.checked_at desc`);
+    order by label, k.country, c.checked_at desc`);
 
   const byKeyword = new Map<number, Tracked>();
   for (const r of rows) {
@@ -228,6 +232,7 @@ export async function loadTracked(appId: number): Promise<Tracked[]> {
     if (!t) {
       t = {
         keywordId: r.keyword_id,
+        label: r.label,
         phrase: r.phrase,
         country: r.country,
         checks: [],

@@ -82,6 +82,8 @@ export const appKeywords = snakeCase.table(
     keywordId: integer()
       .notNull()
       .references(() => keywords.id, { onDelete: "cascade" }),
+    // Groups local phrases of one keyword across storefronts; null means the phrase itself
+    label: text(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.appId, t.keywordId] })],

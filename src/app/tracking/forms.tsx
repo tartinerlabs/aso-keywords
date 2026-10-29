@@ -143,6 +143,11 @@ export function AddKeywordsForm({ appId }: { appId: number }) {
           {pending ? "Adding…" : "Track"}
         </button>
       </div>
+      <label className="mt-2 flex items-center gap-2 text-xs">
+        <input type="checkbox" name="localize" className="accent-primary" />
+        Translate for each storefront (AI writes one local phrase per
+        storefront, grouped under your English phrase)
+      </label>
       <Result state={state} />
     </form>
   );
